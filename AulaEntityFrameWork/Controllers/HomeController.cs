@@ -1,9 +1,11 @@
-using Aula_Entity_Framework.Models;
+using AulaEntityFrameWork.Models;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Diagnostics;
 
-namespace Aula_Entity_Framework.Controllers
+namespace AulaEntityFrameWork.Controllers
 {
+    [Authorize]
     public class HomeController : Controller
     {
         private readonly ILogger<HomeController> _logger;
@@ -12,17 +14,18 @@ namespace Aula_Entity_Framework.Controllers
         {
             _logger = logger;
         }
-        [HttpGet]
+
         public IActionResult Index()
         {
             return View();
         }
-        [HttpGet]
+
         public IActionResult Privacy()
         {
             return View();
         }
 
+        [AllowAnonymous]
         [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
         public IActionResult Error()
         {
