@@ -1,101 +1,180 @@
+use management;
 
--- Automático de Saldo de Gols
-DELIMITER //
-CREATE TRIGGER AtualizarGols 
-AFTER INSERT ON Partidas
-FOR EACH ROW
-BEGIN
-    UPDATE Classificacao 
-    SET gols_marcados = gols_marcados + NEW.resultado_a, 
-        gols_sofridos = gols_sofridos + NEW.resultado_b
-    WHERE equipe_id = NEW.equipe_a_id;
+show tables;
 
-    UPDATE Classificacao 
-    SET gols_marcados = gols_marcados + NEW.resultado_b, 
-        gols_sofridos = gols_sofridos + NEW.resultado_a
-    WHERE equipe_id = NEW.equipe_b_id;
-END;
-//
-DELIMITER ;
+use management;
 
--- Validação de Dados em Partidas
-DELIMITER //
-CREATE TRIGGER ValidarPartida
-BEFORE INSERT ON Partidas
-FOR EACH ROW
-BEGIN
-    IF NEW.resultado_a = NEW.resultado_b THEN
-        SET NEW.empate = TRUE;
-    ELSEIF NEW.vencedor_id IS NULL THEN
-        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Vencedor deve ser definido para partidas não empatadas.';
-    END IF;
-END;
-//
-DELIMITER ;
+-- classificação atual de uma modalidade e torneio
 
--- Criação de Calendário de Partidas
-DELIMITER //
-CREATE PROCEDURE GerarCalendario(IN torneio_id INT)
-BEGIN
-    DECLARE equipe1 INT;
-    DECLARE equipe2 INT;
+
+
+SELECT 
+    e.nome AS equipe,
+    t.nome AS torneio,
+    c.pontos,
+    c.vitorias,
+    c.empates,
+    c.derrotas,
+    c.gols_marcados,
+    c.gols_sofridos,
+    c.saldo_de_gols
+FROM 
+    Classificacao c
+JOIN 
+    Equipes e ON c.equipe_id = e.id
+JOIN 
+    Torneios t ON c.torneio_id = t.id
+WHERE 
+    c.torneio_id = 1 -- ID do torneio
+ORDER BY 
+    c.pontos DESC, c.saldo_de_gols DESC;
     
-    DECLARE cur CURSOR FOR 
-    SELECT e1.id, e2.id 
-    FROM Equipes e1, Equipes e2 
-    WHERE e1.modalidade_id = e2.modalidade_id 
-    AND e1.id != e2.id
-    AND e1.modalidade_id = torneio_id;
+    -- melhores jogadores por número de gols marcados
 
-    OPEN cur;
 
-    read_loop: LOOP
-        FETCH cur INTO equipe1, equipe2;
 
-        -- Inserir partida no calendário
-        INSERT INTO Partidas (fase_id, modalidade_id, equipe_a_id, equipe_b_id, data_partida, local)
-        VALUES (1, torneio_id, equipe1, equipe2, NOW(), 'Local Padrão');
-    END LOOP;
+SELECT 
+    a.nome AS atleta,
+    e.nome AS equipe,
+    SUM(r.gols_pontos) AS total_gols
+FROM 
+    Resultados r
+JOIN 
+    Atletas a ON r.equipe_id = a.equipe_id
+JOIN 
+    Equipes e ON a.equipe_id = e.id
+WHERE 
+    r.vitoria = TRUE
+GROUP BY 
+    a.id
+ORDER BY 
+    total_gols DESC
+LIMIT 10;
 
-    CLOSE cur;
-END;
-//
-DELIMITER ;
+ -- Mostrar os 10 melhores jogadores
+-- 3. Consulta para mostrar o resultado do primeiro jogo de um torneio
 
---  Registro Automático em Fases Eliminatórias
 
-DELIMITER //
-CREATE PROCEDURE RegistrarFaseEliminatoria(IN torneio_id INT, IN fase_atual INT, IN fase_proxima INT)
-BEGIN
-    INSERT INTO Fases (modalidade_id, nome, ordem, status)
-    SELECT modalidade_id, 'Fase Eliminatória', fase_proxima, 'nao_iniciado'
-    FROM Classificacao
-    WHERE torneio_id = torneio_id
-    ORDER BY pontos DESC
-    LIMIT 8; -- Supondo que 8 equipes se classificam
-END;
-//
-DELIMITER ;
 
--- Encerramento de Torneios
-DELIMITER //
+SELECT 
+    p.data_partida,
+    ea.nome AS equipe_a,
+    eb.nome AS equipe_b,
+    p.resultado_a,
+    p.resultado_b,
+    CASE
+        WHEN p.empate = TRUE THEN 'Empate'
+        ELSE (SELECT nome FROM Equipes WHERE id = p.vencedor_id)
+    END AS vencedor
+FROM 
+    Partidas p
+JOIN 
+    Equipes ea ON p.equipe_a_id = ea.id
+JOIN 
+    Equipes eb ON p.equipe_b_id = eb.id
+WHERE 
+    p.modalidade_id = 1 -- ID da modalidade
+ORDER BY 
+    p.data_partida ASC
+LIMIT 1; 
 
-CREATE PROCEDURE EncerrarTorneio(IN torneio_id INT)
-BEGIN
-    UPDATE Torneios 
-    SET status = 'finalizado', data_fim = NOW()
-    WHERE id = torneio_id;
 
-    -- Determina o campeão
-    SELECT equipe_id INTO @campeao_id 
-    FROM Classificacao 
-    WHERE torneio_id = torneio_id
-    ORDER BY pontos DESC, saldo_de_gols DESC
-    LIMIT 1;
+-- verificar a classificação de uma equipe em um torneio
 
-    -- Registra o campeão
-    INSERT INTO Campeoes (torneio_id, equipe_id)
-    VALUES (torneio_id, @campeao_id);
-END;
-//
-DELIMITER ;
+
+
+SELECT 
+    e.nome AS equipe,
+    c.pontos,
+    c.vitorias,
+    c.empates,
+    c.derrotas,
+    c.gols_marcados,
+    c.gols_sofridos,
+    c.saldo_de_gols,
+    c.ordem_classificacao
+FROM 
+    Classificacao c
+JOIN 
+    Equipes e ON c.equipe_id = e.id
+WHERE 
+    c.torneio_id = 1 -- ID do torneio
+    AND c.equipe_id = 1; -- ID da equipe
+    
+-- verificar o tipo de torneio e modalidades incluídas
+
+
+SELECT 
+    t.nome AS torneio,
+    t.tipo_fase AS tipo_de_torneio,
+    m.nome AS modalidade,
+    m.tipo AS tipo_modalidade
+FROM 
+    Torneios t
+JOIN 
+    Modalidades m ON m.torneio_id = t.id
+ORDER BY 
+    t.nome;
+-- 6. Consulta para verificar as próximas partidas agendadas de uma equipe
+-- Essa consulta retorna as partidas futuras de uma equipe específica:
+
+
+SELECT 
+    p.data_partida,
+    ea.nome AS equipe_a,
+    eb.nome AS equipe_b,
+    p.local
+FROM 
+    Partidas p
+JOIN 
+    Equipes ea ON p.equipe_a_id = ea.id
+JOIN 
+    Equipes eb ON p.equipe_b_id = eb.id
+WHERE 
+    (p.equipe_a_id = 1 OR p.equipe_b_id = 1) -- ID da equipe
+    AND p.data_partida > CURDATE() -- Data futura
+ORDER BY 
+    p.data_partida ASC;
+    
+-- 7. Consulta para exibir todas as fases de um torneio com status
+-- Essa consulta lista as fases de um torneio, exibindo seu status atual:
+
+
+
+SELECT 
+    f.nome AS fase,
+    f.status,
+    f.data_inicio,
+    f.data_fim
+FROM 
+    Fases f
+JOIN 
+    Modalidades m ON f.modalidade_id = m.id
+WHERE 
+    m.torneio_id = 1 -- ID do torneio
+ORDER BY 
+    f.ordem ASC;
+    
+-- 8. Consulta para verificar o melhor marcador de um torneio
+-- Aqui você pode listar os melhores jogadores em termos de gols marcados em um torneio:
+
+
+SELECT 
+    a.nome AS atleta,
+    SUM(r.gols_pontos) AS total_gols,
+    t.nome AS torneio
+FROM 
+    Resultados r
+JOIN 
+    Atletas a ON r.equipe_id = a.equipe_id
+JOIN 
+    Equipes e ON a.equipe_id = e.id
+JOIN 
+    Torneios t ON e.modalidade_id = t.id
+WHERE 
+    t.id = 1 -- ID do torneio
+GROUP BY 
+    a.id
+ORDER BY 
+    total_gols DESC
+LIMIT 5; 
